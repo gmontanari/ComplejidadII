@@ -1,191 +1,105 @@
 globals
 [
- perceptron
- input-node-1
- input-node-2
-
- epoch-error
+ street
 ]
 
-links-own[weight]
-
-turtles-own[activation]
-
-breed[input-nodes input-node]
-breed[output-nodes output-node]
-
-;;;breed[hidden-nodes hidden-node] ;;; esto es para las capas ocultas
-;;;hidden-nodes-own[layer]   ;;;esto es para definir la capa de cada una de las capas ocultas
-
-breed[bias-nodes bias-node]
-
-output-nodes-own[threshold]
+turtles-own
+[
+  infected?           ;; if true, the turtle is infectious
+  resistant?          ;; if true, the turtle can't be infected
+]
 
 to setup
   ca
-  ask patches [set pcolor grey]
-  set-default-shape turtles "circle"
-
-  create-output-nodes 1
-  [
-    set activation ifelse-value (random 2 = 0) [1] [-1]
-    set xcor 6
-    set size 2
-    set threshold 0
-    set perceptron self
-  ]
-
-  create-bias-nodes 1
-  [
-    set activation 1
-    setxy 3 7
-    set size 1.5
-    my-create-link-to perceptron
-  ]
-
-  create-input-nodes 1
-  [
-    setup-input-nodes
-    setxy -6 0
-    set input-node-1 self
-  ]
-
-  create-input-nodes 1
-  [
-    setup-input-nodes
-    setxy -6 5
-    set input-node-2 self
-  ]
-
-  ask perceptron [compute-activation]
+  set street 28.5
+  import-pcolors "mapacoyoacan.jpg"
+  clean-picture
   reset-ticks
 end
 
-to my-create-link-to[node]
-  create-link-to node
+
+to clean-picture
+  ask patches with [pcolor >= street - 10 and pcolor <= street + 10]
   [
-   set color red
-   set weight random-float 0.1
-   ;set shape "small-arrow-shape"
+     set pcolor street
   ]
 end
 
-to setup-input-nodes
-  set activation ifelse-value (random 2 = 0)[-1][1]
-  my-create-link-to perceptron
-end
-
-to compute-activation ;; aca hacemos la suma ponderada
-  set activation sign(
-    sum [weight * [activation] of end1] of my-in-links
-  )
-  recolor
-end
-
-to-report sign [x]
-  report ifelse-value (x >= 0)[1] [-1]
-end
-
-to recolor
-  set color ifelse-value (activation = 1)[white][pink]
-  ask in-link-neighbors [recolor]
-  resize-recolor-link
-end
-
-to resize-recolor-link
-   ask links
+to setup-turtles
+  clear-turtles
+  clear-plot
+  ask n-of N patches with [pcolor = street]
   [
-   set label precision weight 4
-    set thickness 0.1 + 5 * abs(weight)
-    set color ifelse-value (weight > 0) [violet + 2][blue]
+    sprout 1
+    [
+       set color blue
+       set size 10
+       set infected? false
+    ]
   ]
+  ask n-of initial-outbreak-size turtles
+    [ become-infected ]
 end
 
-to train
-  set epoch-error 0
-  repeat examples-per-epoch
+to become-infected
+  set infected? true
+  set color red
+end
+
+to go
+   ask turtles
   [
-  ask input-nodes
+    move
+  ]
+  ask turtles with [color = red]
   [
-    set activation random-activation
+   infect
+   recover
   ]
-  ask perceptron
-  [
-    compute-activation
-    update-weights target-answer
-    recolor
-  ]
-  ]
-  set epoch-error 0.5 * epoch-error / examples-per-epoch
   tick
 end
 
-to-report random-activation
-  report ifelse-value (random 2 = 0) [1] [-1]
-end
-
-to update-weights [answer]
-  let output-answer activation ;; resultado de la suma ponderada + sesgo y pasarlo por la funcion de activacion. En este caso es la funcion signo entonces sera la suma * 1 o -1
-  let output-error (answer - output-answer)
-  set epoch-error epoch-error + (output-error) ^ 2
-  ask my-in-links
+to move
+  ifelse [pcolor] of patch-ahead 0.1 = street
+  [fd 0.1]
   [
-    set weight weight + learning-rate * output-error * [activation] of end1
+    lt random 360
+    move
   ]
-
 end
 
-to-report target-answer
-  let a ([activation] of input-node-1 = 1)
-  let b ([activation] of input-node-2 = 1)
-
-  report ifelse-value
-  (run-result (word "my-" target-function " a b"))[1][-1]
-end
-
-to-report my-AND [a b]
-  report a and b
-end
-
-to-report my-OR [a b]
-  report a or b
-end
-
-to-report my-XOR [a b]
-  report a xor b
-end
-
-to test
-  ask input-node-1 [set activation input-1]
-  ask input-node-2 [set activation input-2]
-
-  let correct-answer target-answer
-  ask perceptron [compute-activation]
-
-  let output-answer [activation] of perceptron
-
-  ifelse output-answer = correct-answer
+to infect
+  if any? turtles-here with [color = blue or color = green]
   [
-    user-message (word "output perceptron: " output-answer "\n "
-    "target: " correct-answer "\n correct-answer!!")
+    ask turtles-here with [color = blue or color = green]
+     [
+        set color ifelse-value (random-float 1 > p-i)
+                          [red][blue]
+        move
+    ]
   ]
-
-    [user-message (word "output perceptron: " output-answer "\n "
-    "target: " correct-answer "\n incorrect-answer!!")
-  ]
-
 end
 
-
+to recover
+  if any? turtles-here with [color = green]
+  [
+    ask turtles-here with [color = green]
+     [
+        set color ifelse-value (random-float 1 > p-r)
+                          [blue][green]
+        move
+    ]
+  ]
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
-210
-10
-811
-612
+538
+24
+1147
+434
 -1
 -1
-17.97
+1.0
 1
 10
 1
@@ -195,10 +109,10 @@ GRAPHICS-WINDOW
 1
 1
 1
--16
-16
--16
-16
+-300
+300
+-200
+200
 0
 0
 1
@@ -206,10 +120,10 @@ ticks
 30.0
 
 BUTTON
-101
-51
-167
-84
+72
+64
+145
+97
 NIL
 setup
 NIL
@@ -223,52 +137,44 @@ NIL
 1
 
 SLIDER
-17
-100
-202
-133
-examples-per-epoch
-examples-per-epoch
-1
-20
-13.0
-1
-1
-NIL
-HORIZONTAL
-
-CHOOSER
-55
-179
-193
-224
-target-function
-target-function
-"AND" "OR" "XOR"
-2
-
-SLIDER
-30
-298
-202
-331
-learning-rate
-learning-rate
+64
+15
+236
+48
+N
+N
 0
+1000
+522.0
 1
-0.001
-0.0001
 1
 NIL
 HORIZONTAL
 
 BUTTON
-88
-250
-151
-283
+78
+121
+191
+154
 NIL
-train
+setup-turtles
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+86
+187
+149
+220
+NIL
+go\n
 T
 1
 T
@@ -279,60 +185,70 @@ NIL
 NIL
 1
 
-PLOT
-830
-94
-1298
-447
-Error
+SLIDER
+285
+20
+457
+53
+p-i
+p-i
+0.1
+1
+0.788
+0.001
+1
 NIL
-epoch-error
+HORIZONTAL
+
+SLIDER
+288
+70
+460
+103
+p-r
+p-r
+0
+1
+0.739
+0.001
+1
+NIL
+HORIZONTAL
+
+SLIDER
+303
+129
+483
+162
+initial-outbreak-size
+initial-outbreak-size
+1
+100
+19.0
+1
+1
+NIL
+HORIZONTAL
+
+PLOT
+279
+212
+479
+362
+plot 1
+NIL
+NIL
 0.0
-100.0
+10.0
 0.0
-1.0
+10.0
 true
 false
 "" ""
 PENS
-"default" 1.0 0 -5825686 true "" "plot epoch-error"
-
-CHOOSER
-55
-373
-193
-418
-input-1
-input-1
--1 1
-1
-
-CHOOSER
-76
-454
-214
-499
-input-2
-input-2
--1 1
-0
-
-BUTTON
-42
-526
-105
-559
-NIL
-test
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
+"Blue" 1.0 0 -14070903 true "" "plot count turtles with [color = blue]"
+"Red" 1.0 0 -5298144 true "" "plot count turtles with [color = red]"
+"Green" 1.0 0 -14439633 true "" "plot count turtles with [color = green]"
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -680,6 +596,27 @@ NetLogo 6.0.2
 @#$#@#$#@
 @#$#@#$#@
 @#$#@#$#@
+<experiments>
+  <experiment name="experiment" repetitions="100" runMetricsEveryStep="true">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>S0 &lt;= 0 or I &lt;= 0</exitCondition>
+    <metric>beta</metric>
+    <metric>alpha</metric>
+    <enumeratedValueSet variable="r">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="1000"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="p-r">
+      <value value="0.001"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="p-i">
+      <value value="0.218"/>
+    </enumeratedValueSet>
+  </experiment>
+</experiments>
 @#$#@#$#@
 @#$#@#$#@
 default

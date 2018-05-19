@@ -1,103 +1,209 @@
 globals
 [
- perceptron
- input-node-1
- input-node-2
-
- epoch-error
+  epoch-error
+  target-answer-list
+  training-list
+  file
+  data-list   ;; lista para guardar los datos
+  n
 ]
 
 links-own[weight]
-
-turtles-own[activation]
-
 breed[input-nodes input-node]
+breed[hidden-nodes hidden-node]
 breed[output-nodes output-node]
 
-;;;breed[hidden-nodes hidden-node] ;;; esto es para las capas ocultas
-;;;hidden-nodes-own[layer]   ;;;esto es para definir la capa de cada una de las capas ocultas
+turtles-own[err activation]
 
-breed[bias-nodes bias-node]
-
-output-nodes-own[threshold]
+hidden-nodes-own [num-of-layer]
+output-nodes-own[target-answer]
 
 to setup
   ca
-  ask patches [set pcolor grey]
+  ask patches[set pcolor grey]
   set-default-shape turtles "circle"
+  set file "smoothed-data.txt"
 
-  create-output-nodes 1
-  [
-    set activation ifelse-value (random 2 = 0) [1] [-1]
-    set xcor 6
-    set size 2
-    set threshold 0
-    set perceptron self
-  ]
+  set n num-input-nodes + num-output-nodes
 
-  create-bias-nodes 1
-  [
-    set activation 1
-    setxy 3 7
-    set size 1.5
-    my-create-link-to perceptron
-  ]
+  normalized-data
+  setup-nodes
+  setup-links
+  setup-initial-input
 
-  create-input-nodes 1
-  [
-    setup-input-nodes
-    setxy -6 0
-    set input-node-1 self
-  ]
+  propagate
+  recolor
 
-  create-input-nodes 1
-  [
-    setup-input-nodes
-    setxy -6 5
-    set input-node-2 self
-  ]
-
-  ask perceptron [compute-activation]
   reset-ticks
 end
 
-to my-create-link-to[node]
-  create-link-to node
+to normalized-data
+  file-close-all
+  file-open file
+  let max-dat 0
+  let min-dat 0
+  let delta 0
+  set data-list []
+  while [not file-at-end?]
   [
-   set color red
-   set weight random-float 0.1
-   ;set shape "small-arrow-shape"
+    set data-list lput file-read data-list
+  ]
+  file-close
+  set max-dat max data-list    ;; si los datos tienen tendencia creciente entonces set max-dat 2 * max data-list
+  set min-dat min data-list    ;; si los datos tienen tendencia decreciente entonces set min-dat 2 * max data-list
+  set delta (max-dat - min-dat)
+
+  set data-list map
+[
+  [x] -> (x - min-dat) / delta
+] data-list
+
+end
+
+to setup-nodes
+  let stepX world-width / (num-hidden-layer + 4)
+  let initial-x-position min-pxcor + stepX
+
+  let stepY world-height / (num-hidden-nodes-per-layer + 4)
+  let initial-y-position min-pycor + stepY
+
+  ;;Input nodes
+  let j 0 ;; contador para y
+
+  create-input-nodes num-input-nodes
+  foreach sort input-nodes
+  [
+    input ->
+    ask input
+    [
+       setxy initial-x-position
+             initial-y-position + j * stepY
+       set color black
+       set j j + 1
+
+    ]
+  ]
+
+  ;;Hidden-nodes
+  let i 1 ;; contador para capas ocultas
+  set j 1 ;; contador para neuronas
+
+  repeat num-hidden-layer
+  [
+   set j 0
+   create-hidden-nodes num-hidden-nodes-per-layer
+   [
+     setxy (initial-x-position + i * stepX)
+           (initial-y-position + j * stepY)
+     set color red
+     set j j + 1
+     set num-of-layer i
+    ]
+    set i i + 1
+  ]
+
+  ;;Output nodes
+  set j 0
+  create-output-nodes num-output-nodes
+  foreach sort output-nodes
+  [
+    out ->
+    ask out
+    [
+     setxy (max-pxcor - stepX)
+           (initial-y-position + j * stepY)
+     set color green
+     set j j + 1
+
+    ]
+
+  ]
+
+end
+
+to setup-links
+  connect-all input-nodes hidden-nodes with [ num-of-layer = 1 ]
+  let i 1
+  repeat num-hidden-layer - 1
+  [
+    connect-all hidden-nodes with [num-of-layer = 1]
+                hidden-nodes with [num-of-layer = i + 1]
+    set i i + 1
+  ]
+  connect-all hidden-nodes with [ num-of-layer = num-hidden-layer ] output-nodes
+
+end
+
+to connect-all [nodes1 nodes2]
+  ask nodes1
+  [
+    create-links-to nodes2
+    [
+      set weight random-float 0.2
+      set color blue
+      set label precision weight 2
+      set thickness abs (weight * 0.1)
+    ]
+  ]
+
+end
+
+
+to setup-initial-input
+  set training-list []
+  set target-answer-list []
+
+  set training-list sublist data-list 0 (num-input-nodes)
+
+  set target-answer-list sublist data-list num-input-nodes (num-input-nodes + num-output-nodes)
+
+end
+
+to propagate
+  (foreach training-list sort input-nodes
+    [
+      [t i] ->
+      ask i
+      [
+       set activation t
+       set label precision activation 2
+      ]
+    ]
+  )
+  let i 1
+  repeat num-hidden-layer
+  [
+    ask hidden-nodes with [num-of-layer = i]
+    [
+      set activation new-activation
+      set label precision activation 2
+    ]
+    set i i + 1
+  ]
+
+  ask output-nodes
+  [
+     set activation new-activation
+     set label precision activation 2
   ]
 end
 
-to setup-input-nodes
-  set activation ifelse-value (random 2 = 0)[-1][1]
-  my-create-link-to perceptron
-end
-
-to compute-activation ;; aca hacemos la suma ponderada
-  set activation sign(
+to-report new-activation
+  report sigmoid (
     sum [weight * [activation] of end1] of my-in-links
-  )
-  recolor
+    )
+
 end
 
-to-report sign [x]
-  report ifelse-value (x >= 0)[1] [-1]
+to-report sigmoid [x]
+  report 1 / ( 1 + e ^ ( - x))
 end
 
 to recolor
-  set color ifelse-value (activation = 1)[white][pink]
-  ask in-link-neighbors [recolor]
-  resize-recolor-link
-end
-
-to resize-recolor-link
-   ask links
+  ask links
   [
-   set label precision weight 4
-    set thickness 0.1 + 5 * abs(weight)
-    set color ifelse-value (weight > 0) [violet + 2][blue]
+   set thickness weight * 0.2
+    set label precision weight 2
   ]
 end
 
@@ -105,87 +211,108 @@ to train
   set epoch-error 0
   repeat examples-per-epoch
   [
-  ask input-nodes
-  [
-    set activation random-activation
+    let i 0
+    repeat length data-list - n
+    [
+     read-data-at i
+     propagate
+     backpropagate
+     set i i + 1
+    ]
   ]
-  ask perceptron
-  [
-    compute-activation
-    update-weights target-answer
-    recolor
-  ]
-  ]
-  set epoch-error 0.5 * epoch-error / examples-per-epoch
   tick
 end
 
-to-report random-activation
-  report ifelse-value (random 2 = 0) [1] [-1]
+to read-data-at [i]
+  set training-list but-first training-list
+  set training-list lput (first target-answer-list) training-list
+  set target-answer-list but-first target-answer-list
+  set target-answer-list lput ((item (i + n ) data-list)) target-answer-list
 end
 
-to update-weights [answer]
-  let output-answer activation ;; resultado de la suma ponderada + sesgo y pasarlo por la funcion de activacion. En este caso es la funcion signo entonces sera la suma * 1 o -1
-  let output-error (answer - output-answer)
-  set epoch-error epoch-error + (output-error) ^ 2
-  ask my-in-links
+to backpropagate
+  let example-error 0
+  (foreach  target-answer-list sort output-nodes
+    [[t o] ->
+      let answer t
+      ask o
+      [
+        set err activation * (1 - activation) * (answer - activation)
+        set example-error example-error + (answer - activation) ^ 2
+      ]
+    ]
+  )
+
+  set epoch-error epoch-error + example-error
+
+  let j num-hidden-layer
+  repeat num-hidden-layer
   [
-    set weight weight + learning-rate * output-error * [activation] of end1
+    ask hidden-nodes with [num-of-layer = j]
+    [
+      set err activation * ( 1 - activation) * (sum [weight * [err] of end2] of my-out-links)
+    ]
+    set j j - 1
   ]
 
-end
-
-to-report target-answer
-  let a ([activation] of input-node-1 = 1)
-  let b ([activation] of input-node-2 = 1)
-
-  report ifelse-value
-  (run-result (word "my-" target-function " a b"))[1][-1]
-end
-
-to-report my-AND [a b]
-  report a and b
-end
-
-to-report my-OR [a b]
-  report a or b
-end
-
-to-report my-XOR [a b]
-  report a xor b
-end
-
-to test
-  ask input-node-1 [set activation input-1]
-  ask input-node-2 [set activation input-2]
-
-  let correct-answer target-answer
-  ask perceptron [compute-activation]
-
-  let output-answer [activation] of perceptron
-
-  ifelse output-answer = correct-answer
+  ask links
   [
-    user-message (word "output perceptron: " output-answer "\n "
-    "target: " correct-answer "\n correct-answer!!")
+    set weight weight + learning-rate  * [err] of end2 * [activation] of end1
   ]
 
-    [user-message (word "output perceptron: " output-answer "\n "
-    "target: " correct-answer "\n incorrect-answer!!")
-  ]
+  recolor
+end
 
+to plot-prediction-one
+  plot-pen-reset
+  set-current-plot "Predict Time Series"
+  set-current-plot-pen "dat"
+
+  let i 0
+  foreach data-list
+  [ [x] ->
+    plotxy i x
+    set i i + 1
+  ]
+  set-current-plot-pen "ANN-P"
+
+  set i random (length data-list - n)
+
+  read-at i
+  propagate
+
+  foreach sort input-nodes
+    [
+      [x] ->
+      ask x [plotxy i activation]
+      set i i + 1
+   ]
+    foreach sort output-nodes
+    [
+      [x] ->
+    ask x [plotxy i activation]
+      set i i + 1
+   ]
+end
+
+to read-at [j]
+  set training-list []
+  set target-answer-list []
+
+  set training-list
+       sublist data-list j ( j + num-input-nodes)
 end
 
 
 @#$#@#$#@
 GRAPHICS-WINDOW
-210
+214
 10
-811
-612
+911
+708
 -1
 -1
-17.97
+20.9
 1
 10
 1
@@ -206,10 +333,10 @@ ticks
 30.0
 
 BUTTON
-101
-51
-167
-84
+7
+35
+73
+68
 NIL
 setup
 NIL
@@ -223,50 +350,118 @@ NIL
 1
 
 SLIDER
-17
-100
-202
-133
-examples-per-epoch
-examples-per-epoch
-1
-20
-13.0
+5
+86
+177
+119
+num-hidden-layer
+num-hidden-layer
+0
+10
+3.0
 1
 1
 NIL
 HORIZONTAL
 
-CHOOSER
-55
-179
-193
-224
-target-function
-target-function
-"AND" "OR" "XOR"
-2
+SLIDER
+4
+137
+173
+170
+num-hidden-nodes-per-layer
+num-hidden-nodes-per-layer
+0
+10
+4.0
+1
+1
+NIL
+HORIZONTAL
 
 SLIDER
-30
-298
-202
-331
+4
+183
+176
+216
+num-input-nodes
+num-input-nodes
+1
+10
+5.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+3
+233
+177
+266
+num-output-nodes
+num-output-nodes
+1
+10
+5.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+0
+281
+185
+314
+examples-per-epoch
+examples-per-epoch
+1
+10
+2.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+7
+357
+179
+390
 learning-rate
 learning-rate
 0
 1
+0.1
 0.001
-0.0001
 1
 NIL
 HORIZONTAL
 
+PLOT
+972
+10
+1172
+160
+Error
+NIL
+NIL
+0.0
+10.0
+0.0
+0.1
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -10141563 true "" "plot epoch-error"
+
 BUTTON
-88
-250
-151
-283
+5
+421
+68
+454
 NIL
 train
 T
@@ -280,50 +475,50 @@ NIL
 1
 
 PLOT
-830
-94
-1298
-447
-Error
+1198
+10
+1398
+160
+Datos 
 NIL
-epoch-error
+NIL
 0.0
-100.0
+10.0
 0.0
 1.0
 true
 false
 "" ""
 PENS
-"default" 1.0 0 -5825686 true "" "plot epoch-error"
+"default" 1.0 2 -14070903 true "" "plot-pen-reset\n\nlet j 0\nrepeat length data-list - n\n[\n read-data-at j\n let s j + num-input-nodes\n propagate\n foreach sort output-nodes\n [[o] ->\n   plotxy s [activation] of o\n   set s s + 1\n ]\n set j j + 1\n]"
+"pen-1" 1.0 0 -5825686 true "" "let i 0\nforeach data-list\n[\n [x] -> plotxy i x\n set i i + 1\n]"
 
-CHOOSER
-55
-373
-193
-418
-input-1
-input-1
--1 1
-1
-
-CHOOSER
-76
-454
-214
-499
-input-2
-input-2
--1 1
-0
+PLOT
+972
+167
+1553
+586
+Predict Time Series
+t
+X^(t)
+0.0
+10.0
+0.0
+1.0
+true
+true
+"" ""
+PENS
+"dat" 1.0 0 -10899396 true "" ""
+"ANN-P" 1.0 0 -2674135 true "" ""
 
 BUTTON
-42
-526
-105
-559
+4
+473
+160
+506
 NIL
-test
+plot-prediction-one
 NIL
 1
 T
